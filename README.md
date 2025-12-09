@@ -1,6 +1,10 @@
 # Differential Gaussian Rasterization
+This project contains derivative work of [graphdeco-inria/diff-gaussian-rasterization](https://github.com/graphdeco-inria/diff-gaussian-rasterization)
 
-Used as the rasterization engine for the paper "3D Gaussian Splatting for Real-Time Rendering of Radiance Fields". If you can make use of it in your own research, please be so kind to cite us.
+- The original LICENSE.md is included unchanged.
+
+- This project is non-commercial research use only.
+
 
 <section class="section" id="BibTeX">
   <div class="container is-max-desktop content">
