@@ -242,9 +242,6 @@ int CudaRasterizer::Rasterizer::forward(
 
 	// Dynamically resize image-based auxiliary buffers during training
 	size_t img_chunk_size = required<ImageState>(Npix, Ntiles);
-	printf("width: %d, height: %d\n", width, height);
-	printf("Npix: %zu, Ntiles: %zu (tile_grid %u x %u)\n", Npix, Ntiles, tile_grid.x, tile_grid.y);
-    printf("Image chunk size: %zu\n", img_chunk_size);
 	char* img_chunkptr = imageBuffer(img_chunk_size);
 	ImageState imgState = ImageState::fromChunk(img_chunkptr, Npix, Ntiles);
 
