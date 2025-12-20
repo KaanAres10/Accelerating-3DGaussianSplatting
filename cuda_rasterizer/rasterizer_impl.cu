@@ -169,12 +169,12 @@ CudaRasterizer::GeometryState CudaRasterizer::GeometryState::fromChunk(char*& ch
 	return geom;
 }
 
-CudaRasterizer::ImageState CudaRasterizer::ImageState::fromChunk(char*& chunk, size_t N)
+CudaRasterizer::ImageState CudaRasterizer::ImageState::fromChunk(char*& chunk, size_t N, size_t N_tiles)
 {
 	ImageState img;
 	obtain(chunk, img.accum_alpha, N, 128);
 	obtain(chunk, img.n_contrib, N, 128);
-	obtain(chunk, img.ranges, N, 128);
+	obtain(chunk, img.ranges, N_tiles, 128);
 	return img;
 }
 
@@ -236,10 +236,17 @@ int CudaRasterizer::Rasterizer::forward(
 	dim3 tile_grid((width + BLOCK_X - 1) / BLOCK_X, (height + BLOCK_Y - 1) / BLOCK_Y, 1);
 	dim3 block(BLOCK_X, BLOCK_Y, 1);
 
+	const size_t Npix   = (size_t)width * (size_t)height;
+	const size_t Ntiles = (size_t)tile_grid.x * (size_t)tile_grid.y;
+
+
 	// Dynamically resize image-based auxiliary buffers during training
-	size_t img_chunk_size = required<ImageState>(width * height);
+	size_t img_chunk_size = required<ImageState>(Npix, Ntiles);
+	printf("width: %d, height: %d\n", width, height);
+	printf("Npix: %zu, Ntiles: %zu (tile_grid %u x %u)\n", Npix, Ntiles, tile_grid.x, tile_grid.y);
+    printf("Image chunk size: %zu\n", img_chunk_size);
 	char* img_chunkptr = imageBuffer(img_chunk_size);
-	ImageState imgState = ImageState::fromChunk(img_chunkptr, width * height);
+	ImageState imgState = ImageState::fromChunk(img_chunkptr, Npix, Ntiles);
 
 	if (NUM_CHANNELS != 3 && colors_precomp == nullptr)
 	{
@@ -377,10 +384,14 @@ void CudaRasterizer::Rasterizer::backward(
 	bool antialiasing,
 	bool debug)
 {
+	const dim3 tile_grid((width + BLOCK_X - 1) / BLOCK_X, (height + BLOCK_Y - 1) / BLOCK_Y, 1);
+
+	const size_t Npix   = (size_t)width * (size_t)height;
+	const size_t Ntiles = (size_t)tile_grid.x * (size_t)tile_grid.y;
+
 	GeometryState geomState = GeometryState::fromChunk(geom_buffer, P);
 	BinningState binningState = BinningState::fromChunk(binning_buffer, R);
-	ImageState imgState = ImageState::fromChunk(img_buffer, width * height);
-
+	ImageState imgState = ImageState::fromChunk(img_buffer, Npix, Ntiles);
 	if (radii == nullptr)
 	{
 		radii = geomState.internal_radii;
@@ -389,7 +400,6 @@ void CudaRasterizer::Rasterizer::backward(
 	const float focal_y = height / (2.0f * tan_fovy);
 	const float focal_x = width / (2.0f * tan_fovx);
 
-	const dim3 tile_grid((width + BLOCK_X - 1) / BLOCK_X, (height + BLOCK_Y - 1) / BLOCK_Y, 1);
 	const dim3 block(BLOCK_X, BLOCK_Y, 1);
 
 	// Compute loss gradients w.r.t. 2D mean position, conic matrix,
