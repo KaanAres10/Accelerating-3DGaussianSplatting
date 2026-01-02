@@ -49,7 +49,7 @@ namespace CudaRasterizer
 		uint32_t* n_contrib;
 		float* accum_alpha;
 
-		static ImageState fromChunk(char*& chunk, size_t N);
+		static ImageState fromChunk(char*& chunk, size_t N, size_t N_tiles);
 	};
 
 	struct BinningState
@@ -64,11 +64,11 @@ namespace CudaRasterizer
 		static BinningState fromChunk(char*& chunk, size_t P);
 	};
 
-	template<typename T> 
-	size_t required(size_t P)
+	template<typename T, typename... Args>
+	size_t required(Args... args)
 	{
-		char* size = nullptr;
-		T::fromChunk(size, P);
-		return ((size_t)size) + 128;
+    char* size = nullptr;
+    T::fromChunk(size, args...);
+    return ((size_t)size) + 128;
 	}
 };

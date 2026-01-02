@@ -311,6 +311,10 @@ renderCUDA(
 	__shared__ float2 collected_xy[BLOCK_SIZE];
 	__shared__ float4 collected_conic_opacity[BLOCK_SIZE];
 
+	// Test Optimization 
+	__shared__ float collected_feat[BLOCK_SIZE * CHANNELS];
+	__shared__ float collected_depth[BLOCK_SIZE];   
+
 	// Initialize helper variables
 	float T = 1.0f;
 	uint32_t contributor = 0;
@@ -335,6 +339,12 @@ renderCUDA(
 			collected_id[block.thread_rank()] = coll_id;
 			collected_xy[block.thread_rank()] = points_xy_image[coll_id];
 			collected_conic_opacity[block.thread_rank()] = conic_opacity[coll_id];
+
+			#pragma unroll
+    		for (int ch = 0; ch < CHANNELS; ch++)
+        		collected_feat[block.thread_rank() * CHANNELS + ch] = features[coll_id * CHANNELS + ch];
+
+    		collected_depth[block.thread_rank()] = depths[coll_id];
 		}
 		block.sync();
 
@@ -368,11 +378,19 @@ renderCUDA(
 			}
 
 			// Eq. (3) from 3D Gaussian splatting paper.
-			for (int ch = 0; ch < CHANNELS; ch++)
-				C[ch] += features[collected_id[j] * CHANNELS + ch] * alpha * T;
+			// for (int ch = 0; ch < CHANNELS; ch++)
+			// 	C[ch] += features[collected_id[j] * CHANNELS + ch] * alpha * T;
 
-			if(invdepth)
-			expected_invdepth += (1 / depths[collected_id[j]]) * alpha * T;
+			// if(invdepth)
+			// expected_invdepth += (1 / depths[collected_id[j]]) * alpha * T;
+
+
+			#pragma unroll
+			for (int ch = 0; ch < CHANNELS; ch++)
+    			C[ch] += collected_feat[j * CHANNELS + ch] * alpha * T;
+
+			if (invdepth)
+    			expected_invdepth += (1.0f / collected_depth[j]) * alpha * T;
 
 			T = test_T;
 
