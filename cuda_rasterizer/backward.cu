@@ -494,6 +494,24 @@ renderCUDA(
 	__shared__ float collected_colors[C * BLOCK_SIZE];
 	__shared__ float collected_depths[BLOCK_SIZE];
 
+	__shared__ float shared_dcolors[C * BLOCK_SIZE];
+	__shared__ float2 shared_dmean2D[BLOCK_SIZE];
+	__shared__ float4 shared_dconic2D[BLOCK_SIZE];
+	__shared__ float shared_dopacity[BLOCK_SIZE];
+	__shared__ float shared_dinvdepth[BLOCK_SIZE];
+
+	int tid = threadIdx.x + threadIdx.y * blockDim.x;
+	if (tid < BLOCK_SIZE) {
+		shared_dmean2D[tid] = make_float2(0, 0);
+		shared_dconic2D[tid] = make_float4(0,0,0,0);
+		shared_dopacity[tid] = 0;
+		shared_dinvdepth[tid] = 0;
+	}
+	for (int ch = 0; ch < C; ch++)
+		shared_dcolors[ch * BLOCK_SIZE + tid] = 0;
+		
+	__syncthreads();
+
 
 	// In the forward, we stored the final value for T, the
 	// product of all (1 - alpha) factors. 
@@ -590,7 +608,7 @@ renderCUDA(
 				// Update the gradients w.r.t. color of the Gaussian. 
 				// Atomic, since this pixel is just one of potentially
 				// many that were affected by this Gaussian.
-				atomicAdd(&(dL_dcolors[global_id * C + ch]), dchannel_dcolor * dL_dchannel);
+				shared_dcolors[j * C + ch] += dchannel_dcolor * dL_dchannel;
 			}
 			// Propagate gradients from inverse depth to alphaas and
 			// per Gaussian inverse depths
@@ -600,7 +618,7 @@ renderCUDA(
 			accum_invdepth_rec = last_alpha * last_invdepth + (1.f - last_alpha) * accum_invdepth_rec;
 			last_invdepth = invd;
 			dL_dalpha += (invd - accum_invdepth_rec) * dL_invdepth;
-			atomicAdd(&(dL_dinvdepths[global_id]), dchannel_dcolor * dL_invdepth);
+			shared_dinvdepth[j] += dchannel_dcolor * dL_invdepth;
 			}
 
 			dL_dalpha *= T;
@@ -623,16 +641,43 @@ renderCUDA(
 			const float dG_ddely = -gdy * con_o.z - gdx * con_o.y;
 
 			// Update gradients w.r.t. 2D mean position of the Gaussian
-			atomicAdd(&dL_dmean2D[global_id].x, dL_dG * dG_ddelx * ddelx_dx);
-			atomicAdd(&dL_dmean2D[global_id].y, dL_dG * dG_ddely * ddely_dy);
+			shared_dmean2D[j].x += dL_dG * dG_ddelx * ddelx_dx;
+			shared_dmean2D[j].y += dL_dG * dG_ddely * ddely_dy;
 
 			// Update gradients w.r.t. 2D covariance (2x2 matrix, symmetric)
-			atomicAdd(&dL_dconic2D[global_id].x, -0.5f * gdx * d.x * dL_dG);
-			atomicAdd(&dL_dconic2D[global_id].y, -0.5f * gdx * d.y * dL_dG);
-			atomicAdd(&dL_dconic2D[global_id].w, -0.5f * gdy * d.y * dL_dG);
+			shared_dconic2D[j].x += -0.5f * gdx * d.x * dL_dG;
+			shared_dconic2D[j].y += -0.5f * gdx * d.y * dL_dG;
+			shared_dconic2D[j].w += -0.5f * gdy * d.y * dL_dG;
 
 			// Update gradients w.r.t. opacity of the Gaussian
-			atomicAdd(&(dL_dopacity[global_id]), G * dL_dalpha);
+			shared_dopacity[j] += G * dL_dalpha;
+		}
+	}
+
+	block.sync();
+
+	if(tid == 0)
+	{
+		for (int j = 0; j < BLOCK_SIZE; j++){
+			int global_id = collected_id[j];
+
+			if(shared_dmean2D[j].x == 0.f && shared_dmean2D[j].y == 0.f &&
+			   shared_dconic2D[j].x == 0.f && shared_dconic2D[j].y == 0.f &&
+			   shared_dconic2D[j].z == 0.f && shared_dconic2D[j].w == 0.f &&
+			   shared_dopacity[j] == 0.f)
+				continue;
+
+			atomicAdd(&dL_dmean2D[global_id].x, shared_dmean2D[j].x);
+			atomicAdd(&dL_dmean2D[global_id].y, shared_dmean2D[j].y);
+			atomicAdd(&dL_dconic2D[global_id].x, shared_dconic2D[j].x);
+			atomicAdd(&dL_dconic2D[global_id].y, shared_dconic2D[j].y);
+			atomicAdd(&dL_dconic2D[global_id].z, shared_dconic2D[j].z);
+			atomicAdd(&dL_dconic2D[global_id].w, shared_dconic2D[j].w);
+			atomicAdd(&dL_dopacity[global_id], shared_dopacity[j]);
+			for (int ch = 0; ch < C; ch++)
+				atomicAdd(&dL_dcolors[global_id * C + ch], shared_dcolors[j * C + ch]);
+			if(dL_invdepths)
+				atomicAdd(&dL_dinvdepths[global_id], shared_dinvdepth[j]);
 		}
 	}
 }
