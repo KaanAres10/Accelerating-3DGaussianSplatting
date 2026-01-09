@@ -1,5 +1,4 @@
-# Differential Gaussian Rasterization  
-## Accelerating 3D Gaussian Splatting 
+# Accelerating 3D Gaussian Splatting 
 
 This repository contains **research-focused performance optimizations** for the CUDA rasterization backend used in **3D Gaussian Splatting (3DGS)** training.
 
