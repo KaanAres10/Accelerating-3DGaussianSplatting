@@ -194,6 +194,11 @@ The datasets used in our experiments:
 
 ---
 
+## Authors
+- Kaan Altıntaş
+- Storm van Wassenaar
+- Ye Hua
+
 ## License
 
 This project contains derivative work of [graphdeco-inria/diff-gaussian-rasterization](https://github.com/graphdeco-inria/diff-gaussian-rasterization).
